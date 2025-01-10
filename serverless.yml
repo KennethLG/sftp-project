@@ -1,0 +1,28 @@
+service: sftp-project
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  environment:
+    BUCKET_NAME: ${self:service}-${opt:stage, 'dev'}-bucket
+    SFTP_HOST: ${env:SFTP_HOST}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:*
+          Resource:
+            - arn:aws:s3:::${self:provider.environment.BUCKET_NAME}
+            - arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*
+
+functions:
+  createSftpUser:
+    handler: src/index.createSftpUser 
+
+resources:
+  Resources:
+    SftpBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.BUCKET_NAME}

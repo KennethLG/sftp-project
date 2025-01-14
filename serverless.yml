@@ -3,9 +3,13 @@ service: sftp-project
 provider:
   name: aws
   runtime: nodejs20.x
+  region: us-east-1
   environment:
-    BUCKET_NAME: ${self:service}-${opt:stage, 'dev'}-bucket
-    SFTP_HOST: ${env:SFTP_HOST}
+    BUCKET_NAME: sftp-bucket-${self:provider.region}
+    AWS_ACCOUNT_ID: ${aws:accountId}
+    SFTPCLOUD_API_URL: https://api.sftpcloud.io/v1
+    SFTPCLOUD_API_KEY: ${env:SFTPCLOUD_API_KEY} # SFTPCloud API Key
+    SFTP_SERVER_ID: 557b8613-3a7c-432c-8f26-11d5923a0cab # Replace with your server UUID
   iam:
     role:
       statements:
@@ -18,7 +22,11 @@ provider:
 
 functions:
   createSftpUser:
-    handler: src/index.createSftpUser 
+    handler: src/index.createSftpUser
+    events:
+      - http:
+          path: sftp-user
+          method: post
 
 resources:
   Resources:

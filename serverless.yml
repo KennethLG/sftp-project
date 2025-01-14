@@ -22,11 +22,7 @@ provider:
 
 functions:
   createSftpUser:
-    handler: src/index.createSftpUser
-    events:
-      - http:
-          path: sftp-user
-          method: post
+    handler: src/index.createSftpUser 
 
 resources:
   Resources:

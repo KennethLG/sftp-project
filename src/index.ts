@@ -1,41 +1,52 @@
+import AWS from "aws-sdk";
 import axios from "axios";
 import crypto from "crypto";
-import { CreateSftpUserDto } from "./types";
 
-const SFTPCLOUD_API_URL = process.env.SFTPCLOUD_API_URL!;
+const S3 = new AWS.S3();
+const SFTPCLOUD_API_URL = "https://api.sftpcloud.io/v1";
 const SFTPCLOUD_API_KEY = process.env.SFTPCLOUD_API_KEY!;
 const SFTP_SERVER_ID = process.env.SFTP_SERVER_ID!;
+const BUCKET_NAME = process.env.BUCKET_NAME!;
 
-export const createSftpUser = async (event: CreateSftpUserDto) => {
+export const handler = async (event: any) => {
   try {
-    console.log("Creating SFTP user", event);
+    const email = event.email;
+    if (!email) {
+      throw new Error("Email is required.");
+    }
 
-    // Generate random username
+    // Generate folder name in S3 based on email
+    const folderName = email.replace("@", "_at_");
+    const folderKey = `${folderName}/`;
+
+    // Check if the folder exists in S3
+    try {
+      await S3.headObject({ Bucket: BUCKET_NAME, Key: folderKey }).promise();
+      console.log("Folder already exists in S3:", folderKey);
+    } catch (error: any) {
+      if (error.code === "NotFound") {
+        // Create the folder in S3 if it doesn't exist
+        console.log("Creating new folder in S3:", folderKey);
+        await S3.putObject({
+          Bucket: BUCKET_NAME,
+          Key: folderKey,
+        }).promise();
+      } else {
+        throw new Error(`Error checking folder in S3: ${error.message}`);
+      }
+    }
+
+    // Generate random username and password
     const username = `user-${crypto.randomBytes(4).toString("hex")}`;
-    const password = crypto.randomBytes(12).toString("hex"); // Generate password
+    const password = crypto.randomBytes(12).toString("hex");
 
-    // Create the user
-    const createResponse = await axios.post(
+    // Create a new SFTP user linked to the unique folder
+    const response = await axios.post(
       `${SFTPCLOUD_API_URL}/sftp-instances/${SFTP_SERVER_ID}/sftp-users`,
       {
         username,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${SFTPCLOUD_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-
-    const createdUser = createResponse.data;
-    console.log("User created:", createdUser);
-
-    // Update the user password
-    const updateResponse = await axios.put(
-      `${SFTPCLOUD_API_URL}/sftp-users/${createdUser.uuid}`,
-      {
         password,
+        root_directory: folderKey, // Restrict access to this folder
       },
       {
         headers: {
@@ -45,28 +56,25 @@ export const createSftpUser = async (event: CreateSftpUserDto) => {
       },
     );
 
-    console.log("User password updated:", updateResponse.data);
+    console.log("SFTP user created successfully:", response.data);
 
     return {
       statusCode: 201,
       body: JSON.stringify({
         message: "SFTP user created successfully",
-        user: {
+        sftp: {
+          host: "us-east-1.sftpcloud.io", // Update with actual SFTP host if different
           username,
           password,
-          host: "us-east-1.sftpcloud.io", // Replace with your actual host
         },
+        s3Folder: `${BUCKET_NAME}/${folderKey}`,
       }),
     };
   } catch (error: any) {
-    console.error("Error creating SFTP user:", error);
-
+    console.error("Error handling request:", error);
     return {
-      statusCode: error.response?.status || 500,
-      body: JSON.stringify({
-        message: "Failed to create SFTP user",
-        error: error.response?.data || error.message,
-      }),
+      statusCode: 500,
+      body: JSON.stringify({ error: error.message }),
     };
   }
 };
